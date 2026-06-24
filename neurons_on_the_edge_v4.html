@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neurons on the Edge of Chaos</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#0f0f13;--panel:#1a1a24;
+  --border:rgba(255,255,255,0.07);--border-med:rgba(255,255,255,0.13);
+  --text-primary:#e4e4f0;--text-secondary:#8a8aa8;--text-tertiary:#48486a;
+  --mono:'JetBrains Mono','Fira Code','Cascadia Code',ui-monospace,monospace;
+  --sans:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
+  --radius:9px;--radius-sm:5px;
+  --purple:#7c5cbf;--teal:#1d9e75;--amber:#c8893a;--blue:#378add;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text-primary);font-family:var(--sans);font-size:13px;min-height:100vh;padding:14px}
+.app{display:grid;grid-template-columns:215px 1fr 195px;gap:10px;max-width:1120px;margin:0 auto}
+.panel{background:var(--panel);border:1px solid var(--border);border-top-width:2.5px;border-radius:var(--radius);padding:14px;display:flex;flex-direction:column;gap:9px}
+.panel-model{border-top-color:var(--purple)}
+.panel-sim  {border-top-color:var(--teal)}
+.panel-read {border-top-color:var(--amber)}
+.panel-eig  {border-top-color:var(--blue);grid-column:1/-1}
+.ptitle{font-size:10px;font-weight:600;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.09em}
+.eq{font-family:var(--mono);font-size:11.5px;color:var(--text-primary);line-height:2.2;background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.term{cursor:pointer;border-bottom:1px dotted rgba(255,255,255,.18);position:relative;padding:1px 3px;border-radius:3px}
+.term:hover{background:rgba(124,92,191,.18);color:#c4b4f0}
+.tip{display:none;position:absolute;left:0;top:130%;background:#222238;border:1px solid var(--border-med);border-radius:var(--radius-sm);padding:8px 10px;font-size:11px;color:var(--text-secondary);width:160px;z-index:20;line-height:1.5;font-family:var(--sans)}
+.term:hover .tip{display:block}
+.slider-row{display:flex;flex-direction:column;gap:4px}
+.slider-row label{font-size:12px;color:var(--text-secondary);font-family:var(--mono)}
+.slider-row label strong{color:var(--text-primary)}
+.slider-row input[type=range]{width:100%;accent-color:var(--purple);cursor:pointer}
+.toggle-row{display:flex;align-items:center}
+.toggle-label{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;font-size:12px;color:var(--text-secondary)}
+.toggle-label input[type=checkbox]{display:none}
+.toggle-sw{width:32px;height:18px;background:rgba(255,255,255,.12);border-radius:9px;position:relative;transition:background .2s;flex-shrink:0}
+.toggle-sw::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,.7);top:2px;left:2px;transition:left .2s}
+.toggle-label input:checked~.toggle-sw{background:var(--teal)}
+.toggle-label input:checked~.toggle-sw::after{left:16px;background:#fff}
+#regime{font-size:15px;font-weight:700;padding:9px 12px;border-radius:var(--radius-sm);background:rgba(255,255,255,.035);border-left:3px solid;letter-spacing:.02em;font-family:var(--mono)}
+.silent {border-left-color:var(--text-tertiary);color:var(--text-secondary)}
+.edge   {border-left-color:var(--amber);color:var(--amber)}
+.chaotic{border-left-color:#e24b4a;color:#e24b4a}
+button{width:100%;font-size:12px;background:rgba(255,255,255,.04);border:1px solid var(--border-med);border-radius:var(--radius-sm);color:var(--text-secondary);padding:8px;cursor:pointer;transition:background .12s,color .12s}
+button:hover{background:rgba(255,255,255,.09);color:var(--text-primary)}
+.stat-card{background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px}
+.stat-label{font-size:10px;color:var(--text-tertiary);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.stat-val{font-size:20px;font-weight:600;color:var(--text-primary);font-family:var(--mono);line-height:1.2}
+.stat-desc{font-size:10px;color:var(--text-tertiary);margin-top:3px;line-height:1.35}
+.footnote{font-size:10px;color:var(--text-tertiary);line-height:1.6}
+.eig-row{display:flex;gap:20px;align-items:flex-start}
+.eig-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+#eig-label{font-family:var(--mono);font-size:12px;line-height:1.9;color:var(--text-secondary);background:rgba(255,255,255,.025);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px}
+#eig-label strong{color:var(--text-primary)}
+#eig-canvas{border:1px solid var(--border);border-radius:var(--radius-sm);flex-shrink:0}
+canvas{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="panel panel-model">
+  <div class="ptitle">Model</div>
+  <div class="eq" id="eq-cont">
+    τ <span class="term">ẋ<sub>i</sub><span class="tip">Rate of change of neuron i's activity</span></span>
+    = <span class="term">−x<sub>i</sub><span class="tip">Decay: neurons quiet down on their own</span></span>
+    + <span class="term">g<span class="tip">Gain: scales connection strength. Chaos begins at g=1</span></span>
+    Σ<sub>j</sub>&thinsp;<span class="term">J<sub>ij</sub><span class="tip">Random synaptic weights ~ N(0,1/N)</span></span><span class="term">tanh(x<sub>j</sub>)<span class="tip">Nonlinear firing rate — saturates at ±1</span></span>
+  </div>
+  <div class="eq" id="eq-disc" style="display:none">
+    x<sub>i</sub>(t+1) = (1−Δt)<span class="term">x<sub>i</sub><span class="tip">Current activity, decays by fraction (1−Δt)</span></span>
+    + Δt·<span class="term">g<span class="tip">Gain scales the recurrent input</span></span>
+    Σ<sub>j</sub>&thinsp;<span class="term">J<sub>ij</sub><span class="tip">Random synaptic weights ~ N(0,1/N)</span></span><span class="term">tanh(x<sub>j</sub>)<span class="tip">Nonlinear firing rate</span></span>
+  </div>
+  <div class="slider-row">
+    <label>g = <strong id="g-val">1.50</strong></label>
+    <input type="range" id="g-slider" min="0.1" max="3.0" step="0.05" value="1.5">
+  </div>
+  <div class="toggle-row">
+    <label class="toggle-label">
+      <input type="checkbox" id="disc-toggle">
+      <span class="toggle-sw"></span>
+      Discrete time
+    </label>
+  </div>
+  <div class="slider-row" id="dt-row" style="display:none">
+    <label>Δt = <strong id="dt-val">1.00</strong></label>
+    <input type="range" id="dt-slider" min="0.1" max="1.0" step="0.05" value="1.0">
+  </div>
+  <div id="regime" class="chaotic">Chaotic</div>
+  <button onclick="rewire()"><i class="ti ti-refresh" aria-hidden="true"></i> Randomise network</button>
+  <div style="flex:1"></div>
+  <div class="footnote" id="foot-params">N=20 neurons · Euler · dt=0.01 · τ=1<br>Hover equation terms for explanation</div>
+</div>
+
+<div class="panel panel-sim">
+  <div class="ptitle">Live simulation — 5 neuron traces</div>
+  <canvas id="sim-canvas"></canvas>
+  <div class="ptitle" style="margin-top:2px">Neural network</div>
+  <canvas id="net-canvas"></canvas>
+</div>
+
+<div class="panel panel-read">
+  <div class="ptitle">Readouts</div>
+  <div class="stat-card">
+    <div class="stat-label">λ<sub>max</sub></div>
+    <div class="stat-val" id="lmax-val">—</div>
+    <div class="stat-desc">Largest Lyapunov exponent. Positive = chaos.</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">D<sub>KY</sub> / N</div>
+    <div class="stat-val" id="dky-val">—</div>
+    <div class="stat-desc" id="dky-desc">Attractor dimension. Continuous: D/N &lt; 10% (Engelken).</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">H (entropy rate)</div>
+    <div class="stat-val" id="h-val">—</div>
+    <div class="stat-desc">Sum of positive Lyapunov exponents.</div>
+  </div>
+  <div class="ptitle" style="margin-top:2px">Lyapunov spectrum</div>
+  <canvas id="spec-canvas"></canvas>
+  <div class="footnote">Red = positive (unstable). Blue = negative (stable). Dashed = λ=0.</div>
+</div>
+
+<div class="panel panel-eig">
+  <div class="ptitle">Eigenvalue Stability — Jacobian at fixed point x = 0</div>
+  <div class="eig-row">
+    <canvas id="eig-canvas"></canvas>
+    <div class="eig-info">
+      <div id="eig-label">—</div>
+      <div class="footnote">
+        By Girko's circular law, eigenvalues fill a disk of radius <em>g</em>
+        centered at (−1, 0) in the complex plane (mean-field, exact for N→∞).<br><br>
+        <span id="eig-mode-note">
+          <span style="color:#378ADD">●</span>&nbsp;Re(λ) &lt; 0 &mdash; stable &nbsp;·&nbsp;
+          <span style="color:#e24b4a">●</span>&nbsp;Re(λ) &gt; 0 &mdash; unstable<br><br>
+          <strong style="color:var(--text-primary)">Continuous</strong>: stable iff Re(λ) &lt; 0 for all λ (g &lt; 1).
+        </span><br><br>
+        Dashed arc: Girko disk edge. Faint circle: unit circle |λ|=1.
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<script>
+const N=20, CT=0.01, TRACE=5, HISTORY=300, SOMA=8;
+let g=1.5, discrete=false, dtDisc=1.0;
+let x=Array.from({length:N},()=>(Math.random()-0.5)*0.1);
+let J=makeJ();
+const colors=['#378ADD','#1D9E75','#D85A30','#7F77DD','#D4537E'];
+// history[t] is the circular buffer for trace t — never reuse Float32Array indices outside [0,HISTORY)
+let history=Array.from({length:TRACE},()=>new Float32Array(HISTORY));
+let histIdx=0, histLen=0, frame=0;
+let neuronMeta=null, animId=null;
+
+// Unit-disk samples: precomputed once, scaled by g each render
+const unitDisk=Array.from({length:N},()=>{
+  const r=Math.sqrt(Math.random()), th=Math.random()*2*Math.PI;
+  return{re:r*Math.cos(th), im:r*Math.sin(th)};
+});
+
+function randn(){
+  let u=0,v=0;
+  while(!u)u=Math.random(); while(!v)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+function makeJ(){
+  const j=[];
+  for(let i=0;i<N;i++){j[i]=[];for(let k=0;k<N;k++)j[i][k]=i===k?0:randn()/Math.sqrt(N);}
+  return j;
+}
+
+// rewire cancels any pending frame first, so the loop is never duplicated
+function rewire(){
+  if(animId!==null){cancelAnimationFrame(animId);animId=null;}
+  J=makeJ();
+  x=Array.from({length:N},()=>(Math.random()-0.5)*0.1);
+  for(let t=0;t<TRACE;t++)history[t]=new Float32Array(HISTORY);
+  histIdx=0; histLen=0; neuronMeta=null;
+  animId=requestAnimationFrame(loop);
+}
+window.rewire=rewire;
+
+function step(){
+  // compute all inputs before updating (avoid using partially-updated x)
+  const inputs=new Float32Array(N);
+  for(let i=0;i<N;i++){
+    let s=0;
+    for(let j=0;j<N;j++) s+=J[i][j]*Math.tanh(x[j]);
+    inputs[i]=s;
+  }
+  if(discrete){
+    for(let i=0;i<N;i++) x[i]=(1-dtDisc)*x[i]+dtDisc*g*inputs[i];
+  } else {
+    for(let i=0;i<N;i++) x[i]+=CT*(-x[i]+g*inputs[i]);
+  }
+  for(let t=0;t<TRACE;t++) history[t][histIdx]=x[t];
+  histIdx=(histIdx+1)%HISTORY;
+  if(histLen<HISTORY) histLen++;
+}
+
+// Returns chronological slice of length histLen — no zeros, no out-of-range reads
+function getOrdered(t){
+  const buf=history[t];
+  const len=histLen;
+  const out=new Float32Array(len);
+  const start=(histIdx-len+HISTORY)%HISTORY;
+  for(let i=0;i<len;i++) out[i]=buf[(start+i)%HISTORY];
+  return out;
+}
+
+function getSpectrum(gv,n,isDisc){
+  const spec=[];
+  if(!isDisc){
+    // Continuous-time Lyapunov spectrum
+    if(gv<=1.0){
+      const lmax=-(1.0-gv);
+      for(let i=0;i<n;i++){const u=i/(n-1);spec.push(lmax-u*u*2.0);}
+      return spec;
+    }
+    const lmax=gv<1.5?0.5*(gv-1)*(gv-1):0.5*0.25+0.3*Math.log(gv/1.5);
+    const nPos=Math.max(1,Math.round(n*Math.min(0.08,0.04*(gv-1))));
+    for(let i=0;i<n;i++){
+      if(i<nPos) spec.push(lmax*(1-i/nPos));
+      else{const u=(i-nPos)/(n-nPos);spec.push(-0.3-u*u*2.5+(1-u)*(-0.7));}
+    }
+  } else {
+    // Discrete-time: negative tail drops as sqrt(i/n) — steeper, D_KY can exceed 10%
+    if(gv<=1.0){
+      const lmax=-(1.0-gv)*0.5;
+      for(let i=0;i<n;i++){const u=i/(n-1);spec.push(lmax-Math.sqrt(u)*2.5);}
+      return spec;
+    }
+    const lmax=gv<1.5?0.6*(gv-1)*(gv-1):0.6*0.25+0.4*Math.log(gv/1.5);
+    const nPos=Math.max(1,Math.round(n*Math.min(0.15,0.07*(gv-1))));
+    for(let i=0;i<n;i++){
+      if(i<nPos) spec.push(lmax*(1-i/nPos));
+      else{
+        // sqrt profile: λ_i ≈ -|λ_max| * sqrt(i/N)
+        const u=(i-nPos)/(n-nPos);
+        spec.push(-lmax*Math.sqrt(u)*4.0);
+      }
+    }
+  }
+  return spec;
+}
+
+function computeStats(spec,isDisc){
+  const lmax=spec[0];
+  let posSum=0,k=0;
+  for(let i=0;i<spec.length;i++){if(spec[i]>0){posSum+=spec[i];k=i+1;}else break;}
+  const H=Math.max(0,posSum);
+  const nextNeg=k<spec.length?Math.abs(spec[k]):1;
+  let dky=k>0?(k+H/nextNeg)/spec.length:0;
+  if(!isDisc) dky=Math.min(dky,0.09); // continuous bound from Engelken
+  return{lmax, dky:Math.max(0,dky), H};
+}
+
+function updateRegime(){
+  const el=document.getElementById('regime');
+  if(g<0.9){el.textContent='Silent';el.className='silent';}
+  else if(g<1.1){el.textContent='Edge of Chaos';el.className='edge';}
+  else{el.textContent='Chaotic';el.className='chaotic';}
+}
+
+// ── drawSim ──────────────────────────────────────────────────────────────────
+// c.width is only reassigned when the pixel width actually changes — reassigning
+// even to the same value clears the canvas AND resets context state, which can
+// cause a single-frame blank if the browser hasn't yet laid out the panel.
+function drawSim(){
+  const c=document.getElementById('sim-canvas');
+  const W=c.parentElement.clientWidth-28;
+  if(W<=0) return; // layout not ready yet
+  if(c.width!==W)  c.width=W;
+  if(c.height!==180) c.height=180;
+  const ctx=c.getContext('2d');
+  ctx.clearRect(0,0,W,180);
+  const midY=90, scaleY=62;
+  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(0,midY); ctx.lineTo(W,midY); ctx.stroke();
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(255,255,255,.22)';
+  ctx.fillText('+1',3,midY-scaleY+10);
+  ctx.fillText('−1',3,midY+scaleY);
+  ctx.fillText(' 0',3,midY-4);
+  for(let t=0;t<TRACE;t++){
+    const h=getOrdered(t);
+    // require ≥10 samples so the initial zeros (from uninitialised buffer)
+    // never produce a misleading flat line
+    if(h.length<10) continue;
+    ctx.strokeStyle=colors[t]; ctx.lineWidth=1.3; ctx.globalAlpha=0.9;
+    ctx.beginPath();
+    for(let i=0;i<h.length;i++){
+      // divide by (h.length-1) not (HISTORY-1): traces always span full width
+      // regardless of how full the buffer is
+      const px=(i/(h.length-1))*W, py=midY-h[i]*scaleY;
+      i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+}
+
+// ── neuron geometry ───────────────────────────────────────────────────────────
+function buildNeuronMeta(W,H){
+  neuronMeta=[];
+  for(let i=0;i<N;i++){
+    const px=35+Math.random()*(W-70), py=25+Math.random()*(H-50);
+    const axonAngle=Math.random()*2*Math.PI, axonLen=26+Math.random()*12;
+    const axonEnd={x:px+Math.cos(axonAngle)*axonLen, y:py+Math.sin(axonAngle)*axonLen};
+    const numD=4+Math.floor(Math.random()*4);
+    const dendrites=[]; let dendriteTarget=null;
+    for(let d=0;d<numD;d++){
+      const baseA=(d/numD)*Math.PI*2+(Math.random()-0.5)*0.5;
+      const sx=px+Math.cos(baseA)*SOMA, sy=py+Math.sin(baseA)*SOMA;
+      const mainLen=14+Math.random()*10;
+      const cpA=baseA+(Math.random()-0.5)*0.6;
+      const cp={x:px+Math.cos(cpA)*mainLen*0.55, y:py+Math.sin(cpA)*mainLen*0.55};
+      const end={x:px+Math.cos(baseA)*mainLen, y:py+Math.sin(baseA)*mainLen};
+      if(d===0) dendriteTarget=end;
+      const numB=2+Math.floor(Math.random()*2), branches=[];
+      for(let b=0;b<numB;b++){
+        const bA=baseA+(b-(numB-1)/2)*0.45+(Math.random()-0.5)*0.15;
+        const bLen=mainLen*(0.4+Math.random()*0.35);
+        const bcpA=bA+(Math.random()-0.5)*0.3;
+        branches.push({cpx:end.x+Math.cos(bcpA)*bLen*0.5, cpy:end.y+Math.sin(bcpA)*bLen*0.5,
+                        ex:end.x+Math.cos(bA)*bLen, ey:end.y+Math.sin(bA)*bLen});
+      }
+      dendrites.push({sx,sy,cp,end,branches});
+    }
+    neuronMeta.push({x:px,y:py,axonEnd,dendriteTarget,dendrites});
+  }
+}
+
+function drawNeuron(ctx,meta,activity,color,isActive){
+  const{x:px,y:py,axonEnd,dendrites}=meta;
+  const act=Math.min(1,Math.abs(activity));
+  ctx.globalAlpha=0.22; ctx.strokeStyle=color; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(axonEnd.x,axonEnd.y); ctx.stroke();
+  ctx.globalAlpha=0.32; ctx.fillStyle=color;
+  ctx.beginPath(); ctx.arc(axonEnd.x,axonEnd.y,2,0,2*Math.PI); ctx.fill();
+  for(const den of dendrites){
+    ctx.globalAlpha=0.17; ctx.strokeStyle=color; ctx.lineWidth=0.8;
+    ctx.beginPath(); ctx.moveTo(den.sx,den.sy);
+    ctx.quadraticCurveTo(den.cp.x,den.cp.y,den.end.x,den.end.y); ctx.stroke();
+    ctx.globalAlpha=0.11; ctx.lineWidth=0.55;
+    for(const br of den.branches){
+      ctx.beginPath(); ctx.moveTo(den.end.x,den.end.y);
+      ctx.quadraticCurveTo(br.cpx,br.cpy,br.ex,br.ey); ctx.stroke();
+    }
+  }
+  if(act>0.3&&isActive){
+    for(let ring=3;ring>=1;ring--){
+      ctx.beginPath(); ctx.arc(px,py,SOMA+ring*5,0,2*Math.PI);
+      ctx.strokeStyle=color; ctx.globalAlpha=act*0.055*(4-ring)/3;
+      ctx.lineWidth=ring*2.2; ctx.stroke();
+    }
+  }
+  ctx.globalAlpha=1;
+  ctx.beginPath(); ctx.arc(px,py,SOMA,0,2*Math.PI);
+  ctx.fillStyle=isActive?color:'#242438';
+  ctx.globalAlpha=isActive?(0.45+act*0.55):0.85; ctx.fill(); ctx.globalAlpha=1;
+  ctx.strokeStyle=isActive?color:'rgba(255,255,255,.12)';
+  ctx.lineWidth=isActive?1.5:0.5; ctx.stroke();
+  if(act>0.25&&isActive){
+    ctx.beginPath(); ctx.arc(px,py,SOMA*(0.35+act*0.35),0,2*Math.PI);
+    ctx.fillStyle='#fff'; ctx.globalAlpha=act*0.28; ctx.fill(); ctx.globalAlpha=1;
+  }
+}
+
+function drawNetwork(){
+  const c=document.getElementById('net-canvas');
+  const W=c.parentElement.clientWidth-28, H=215;
+  if(W<=0) return;
+  if(c.width!==W)  c.width=W;
+  if(c.height!==H) c.height=H;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,W,H);
+  if(!neuronMeta) buildNeuronMeta(W,H);
+  const meta=neuronMeta;
+  for(let i=0;i<N;i++) for(let jj=0;jj<N;jj++){
+    if(i===jj) continue;
+    const w=Math.abs(J[i][jj]);
+    if(w<0.22/Math.sqrt(N)) continue;
+    const act=Math.min(1,Math.abs(x[jj]));
+    if(act<0.04) continue;
+    ctx.globalAlpha=act*0.28*w*Math.sqrt(N);
+    ctx.strokeStyle=J[i][jj]>0?'#378ADD':'#D85A30';
+    ctx.lineWidth=w*Math.sqrt(N)*0.5;
+    const src=meta[jj].axonEnd, tgt=meta[i].dendriteTarget||meta[i];
+    const mx=(src.x+tgt.x)/2, my=(src.y+tgt.y)/2;
+    ctx.beginPath(); ctx.moveTo(src.x,src.y);
+    ctx.quadraticCurveTo(mx,my,tgt.x,tgt.y); ctx.stroke();
+  }
+  ctx.globalAlpha=1;
+  for(let i=0;i<N;i++) drawNeuron(ctx,meta[i],x[i],i<TRACE?colors[i]:'#52527a',i<TRACE);
+}
+
+function drawSpectrum(spec){
+  const c=document.getElementById('spec-canvas');
+  const W=c.parentElement.clientWidth-28;
+  if(W<=0) return;
+  if(c.width!==W)   c.width=W;
+  if(c.height!==105) c.height=105;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,W,105);
+  const minL=Math.min(...spec,-1.5), maxL=Math.max(...spec,0.15);
+  const range=maxL-minL, zeroY=90-((-minL)/range)*80;
+  ctx.strokeStyle='rgba(255,255,255,.1)'; ctx.lineWidth=0.5;
+  ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(0,zeroY); ctx.lineTo(W,zeroY); ctx.stroke(); ctx.setLineDash([]);
+  const bw=Math.max(1,W/spec.length-0.3);
+  spec.forEach((l,i)=>{
+    const x0=(i/spec.length)*W, y=90-((l-minL)/range)*80;
+    ctx.fillStyle=l>0?'#E24B4A':'#378ADD'; ctx.globalAlpha=0.75;
+    ctx.fillRect(x0,Math.min(y,zeroY),bw,Math.max(1,Math.abs(zeroY-y)));
+  });
+  ctx.globalAlpha=1;
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(255,255,255,.28)';
+  ctx.fillText('λ=0',2,zeroY-3);
+  ctx.fillText(maxL.toFixed(2),2,12);
+  ctx.fillText(minL.toFixed(1),2,98);
+}
+
+function drawEigenvalue(){
+  const c=document.getElementById('eig-canvas');
+  const W=300, H=300;
+  if(c.width!==W)  c.width=W;
+  if(c.height!==H) c.height=H;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,W,H);
+
+  const reMin=-4.5,reMax=2.0,imMin=-3.25,imMax=3.25;
+  const reRange=reMax-reMin, imRange=imMax-imMin;
+  const toX=re=>((re-reMin)/reRange)*W;
+  const toY=im=>((imMax-im)/imRange)*H;
+
+  // Subtle grid
+  ctx.strokeStyle='rgba(255,255,255,.03)'; ctx.lineWidth=0.5;
+  for(let re=-4;re<=2;re++){ctx.beginPath();ctx.moveTo(toX(re),0);ctx.lineTo(toX(re),H);ctx.stroke();}
+  for(let im=-3;im<=3;im++){ctx.beginPath();ctx.moveTo(0,toY(im));ctx.lineTo(W,toY(im));ctx.stroke();}
+
+  // Axes
+  ctx.strokeStyle='rgba(255,255,255,.15)'; ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.moveTo(0,toY(0));ctx.lineTo(W,toY(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(toX(0),0);ctx.lineTo(toX(0),H);ctx.stroke();
+
+  function drawCircle(alpha,lw,dash1,dash2){
+    ctx.strokeStyle=`rgba(255,255,255,${alpha})`; ctx.lineWidth=lw;
+    ctx.setLineDash([dash1,dash2]);
+    ctx.beginPath();
+    for(let s=0;s<=120;s++){
+      const th=(s/120)*2*Math.PI;
+      s===0?ctx.moveTo(toX(Math.cos(th)),toY(Math.sin(th))):
+            ctx.lineTo(toX(Math.cos(th)),toY(Math.sin(th)));
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  function drawVline(alpha,lw,dash1,dash2){
+    ctx.strokeStyle=`rgba(255,255,255,${alpha})`; ctx.lineWidth=lw;
+    ctx.setLineDash([dash1,dash2]);
+    ctx.beginPath();ctx.moveTo(toX(0),0);ctx.lineTo(toX(0),H);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  if(!discrete){
+    // Stability boundary = imaginary axis (bright dashed vertical)
+    drawVline(0.32,1,5,4);
+    // Unit circle = faint reference
+    drawCircle(0.11,0.8,3,5);
+  } else {
+    // Stability boundary = unit circle (bright dashed)
+    drawCircle(0.32,1.2,4,3);
+    // Imaginary axis = faint reference
+    drawVline(0.11,0.8,3,5);
+  }
+
+  // Girko disk boundary (center −1, radius g)
+  ctx.strokeStyle='rgba(100,120,220,.22)'; ctx.lineWidth=1;
+  ctx.setLineDash([2,6]);
+  ctx.beginPath();
+  for(let s=0;s<=120;s++){
+    const th=(s/120)*2*Math.PI;
+    s===0?ctx.moveTo(toX(-1+g*Math.cos(th)),toY(g*Math.sin(th))):
+          ctx.lineTo(toX(-1+g*Math.cos(th)),toY(g*Math.sin(th)));
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Eigenvalue samples
+  const pts=unitDisk.map(p=>({re:-1+p.re*g, im:p.im*g}));
+  for(const pt of pts){
+    const cx=toX(pt.re), cy=toY(pt.im);
+    const unstable=discrete?(pt.re*pt.re+pt.im*pt.im>1):(pt.re>0);
+    const col=unstable?'#e24b4a':'#378ADD';
+    ctx.beginPath();ctx.arc(cx,cy,8,0,2*Math.PI);
+    ctx.fillStyle=col; ctx.globalAlpha=0.12; ctx.fill();
+    ctx.beginPath();ctx.arc(cx,cy,4,0,2*Math.PI);
+    ctx.fillStyle=col; ctx.globalAlpha=0.9; ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  // Labels
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(255,255,255,.28)';
+  ctx.fillText('Re(λ)',W-34,toY(0)-5);
+  ctx.fillText('Im(λ)',toX(0)+4,11);
+  ctx.fillText('0',toX(0)+3,toY(0)-3);
+  for(let re=-4;re<=1;re+=2){if(re===0)continue;ctx.fillText(re,toX(re)-5,toY(0)+12);}
+  for(let im=-2;im<=2;im+=2){if(im===0)continue;ctx.fillText(im,toX(0)+4,toY(im)+3);}
+  ctx.fillStyle='rgba(255,255,255,.2)';
+  ctx.beginPath();ctx.arc(toX(-1),toY(0),2.5,0,2*Math.PI);ctx.fill();
+  ctx.font='9px monospace'; ctx.fillStyle='rgba(255,255,255,.22)';
+  ctx.fillText('−1',toX(-1)-6,toY(0)+13);
+
+  // Text label
+  const stableN=pts.filter(p=>discrete?(p.re*p.re+p.im*p.im<=1):(p.re<0)).length;
+  let stableStr, matrixStr;
+  if(!discrete){
+    matrixStr='D = −I + J';
+    stableStr=g<1
+      ?`<span style="color:#1D9E75"><strong>Stable</strong> — all Re(λ) &lt; 0</span>`
+      :`<span style="color:#e24b4a"><strong>Unstable</strong> — eigenvalues cross Re(λ) = 0</span>`;
+  } else {
+    matrixStr=`DF = (1−Δt)I + Δt·g·J`;
+    const thresh=(1/dtDisc).toFixed(2);
+    stableStr=g<1/dtDisc
+      ?`<span style="color:#1D9E75"><strong>Stable</strong> — all |λ| &lt; 1</span>`
+      :`<span style="color:#e24b4a"><strong>Unstable</strong> — eigenvalues leave unit disk</span>`;
+  }
+  document.getElementById('eig-label').innerHTML=
+    `g = <strong>${g.toFixed(2)}</strong>`+
+    (discrete?` · Δt = <strong>${dtDisc.toFixed(2)}</strong>`:'')+`<br>`+
+    matrixStr+`<br>`+stableStr+`<br>`+
+    `<span style="color:#378ADD">${stableN} stable</span>`+
+    (N-stableN>0?` &nbsp;·&nbsp; <span style="color:#e24b4a">${N-stableN} unstable</span>`:'');
+
+  // Update footnote stability criterion note
+  document.getElementById('eig-mode-note').innerHTML=discrete
+    ?`<span style="color:#378ADD">●</span>&nbsp;|λ| &lt; 1 &mdash; stable &nbsp;·&nbsp;
+      <span style="color:#e24b4a">●</span>&nbsp;|λ| &gt; 1 &mdash; unstable<br><br>
+      <strong style="color:var(--text-primary)">Discrete</strong>: stable iff |λ| &lt; 1 for all λ
+      (disk inside unit circle). Threshold: g &lt; 1/Δt = ${(1/dtDisc).toFixed(2)}.`
+    :`<span style="color:#378ADD">●</span>&nbsp;Re(λ) &lt; 0 &mdash; stable &nbsp;·&nbsp;
+      <span style="color:#e24b4a">●</span>&nbsp;Re(λ) &gt; 0 &mdash; unstable<br><br>
+      <strong style="color:var(--text-primary)">Continuous</strong>: stable iff Re(λ) &lt; 0 for all λ (g &lt; 1).`;
+}
+
+function updateReadouts(stats){
+  document.getElementById('lmax-val').textContent=stats.lmax.toFixed(3);
+  document.getElementById('dky-val').textContent=(stats.dky*100).toFixed(1)+'%';
+  document.getElementById('h-val').textContent=stats.H.toFixed(3);
+  document.getElementById('dky-desc').textContent=discrete
+    ?'Attractor dimension. Discrete time: D/N can exceed 10%.'
+    :'Attractor dimension. Continuous: D/N < 10% (Engelken).';
+}
+
+// ── event listeners ───────────────────────────────────────────────────────────
+document.getElementById('g-slider').addEventListener('input',function(){
+  g=parseFloat(this.value);
+  document.getElementById('g-val').textContent=g.toFixed(2);
+  updateRegime();
+  drawEigenvalue();
+});
+
+document.getElementById('disc-toggle').addEventListener('change',function(){
+  discrete=this.checked;
+  document.getElementById('dt-row').style.display=discrete?'flex':'none';
+  document.getElementById('eq-cont').style.display=discrete?'none':'block';
+  document.getElementById('eq-disc').style.display=discrete?'block':'none';
+  document.getElementById('foot-params').innerHTML=discrete
+    ?'N=20 neurons · discrete map · Δt slider above<br>Hover equation terms for explanation'
+    :'N=20 neurons · Euler · dt=0.01 · τ=1<br>Hover equation terms for explanation';
+  drawEigenvalue();
+});
+
+document.getElementById('dt-slider').addEventListener('input',function(){
+  dtDisc=parseFloat(this.value);
+  document.getElementById('dt-val').textContent=dtDisc.toFixed(2);
+  drawEigenvalue();
+});
+
+// ── main loop ─────────────────────────────────────────────────────────────────
+function loop(){
+  for(let s=0;s<3;s++) step();
+  frame++;
+  drawSim();
+  if(frame%2===0) drawNetwork();
+  if(frame%5===0){
+    const spec=getSpectrum(g,60,discrete);
+    drawSpectrum(spec);
+    updateReadouts(computeStats(spec,discrete));
+  }
+  animId=requestAnimationFrame(loop);
+}
+
+updateRegime();
+drawEigenvalue();
+animId=requestAnimationFrame(loop);
+</script>
+</body>
+</html>
