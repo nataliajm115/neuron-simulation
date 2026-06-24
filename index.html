@@ -486,22 +486,34 @@ function drawEigenvalue(){
     drawVline(0.11,0.8,3,5);
   }
 
-  // Girko disk boundary (center −1, radius g)
+  // Continuous time: eigenvalues of (-I + gJ) → disk centered at -1, radius g
+  // Discrete time:   eigenvalues of (1-dt)I + dt*g*J → disk centered at (1-dt), radius dt*g
+  const diskCenter = discrete ? (1 - dtDisc) : -1;
+  const diskRadius = discrete ? dtDisc * g : g;
+
+  // Girko disk boundary
   ctx.strokeStyle='rgba(100,120,220,.22)'; ctx.lineWidth=1;
   ctx.setLineDash([2,6]);
   ctx.beginPath();
   for(let s=0;s<=120;s++){
     const th=(s/120)*2*Math.PI;
-    s===0?ctx.moveTo(toX(-1+g*Math.cos(th)),toY(g*Math.sin(th))):
-          ctx.lineTo(toX(-1+g*Math.cos(th)),toY(g*Math.sin(th)));
+    const rx=toX(diskCenter+diskRadius*Math.cos(th));
+    const ry=toY(diskRadius*Math.sin(th));
+    s===0?ctx.moveTo(rx,ry):ctx.lineTo(rx,ry);
   }
   ctx.stroke(); ctx.setLineDash([]);
 
   // Eigenvalue samples
-  const pts=unitDisk.map(p=>({re:-1+p.re*g, im:p.im*g}));
+  const pts = unitDisk.map(p => ({
+    re: diskCenter + p.re * diskRadius,
+    im: p.im * diskRadius
+  }));
   for(const pt of pts){
     const cx=toX(pt.re), cy=toY(pt.im);
-    const unstable=discrete?(pt.re*pt.re+pt.im*pt.im>1):(pt.re>0);
+    // Stability: continuous = Re(λ)<0, discrete = |λ|<1
+    const unstable = discrete
+      ? (pt.re*pt.re + pt.im*pt.im > 1)
+      : (pt.re > 0);
     const col=unstable?'#e24b4a':'#378ADD';
     ctx.beginPath();ctx.arc(cx,cy,8,0,2*Math.PI);
     ctx.fillStyle=col; ctx.globalAlpha=0.12; ctx.fill();
@@ -517,10 +529,11 @@ function drawEigenvalue(){
   ctx.fillText('0',toX(0)+3,toY(0)-3);
   for(let re=-4;re<=1;re+=2){if(re===0)continue;ctx.fillText(re,toX(re)-5,toY(0)+12);}
   for(let im=-2;im<=2;im+=2){if(im===0)continue;ctx.fillText(im,toX(0)+4,toY(im)+3);}
+  // Mark disk center
   ctx.fillStyle='rgba(255,255,255,.2)';
-  ctx.beginPath();ctx.arc(toX(-1),toY(0),2.5,0,2*Math.PI);ctx.fill();
+  ctx.beginPath();ctx.arc(toX(diskCenter),toY(0),2.5,0,2*Math.PI);ctx.fill();
   ctx.font='9px monospace'; ctx.fillStyle='rgba(255,255,255,.22)';
-  ctx.fillText('−1',toX(-1)-6,toY(0)+13);
+  ctx.fillText(discrete?'1−Δt':'−1',toX(diskCenter)-8,toY(0)+13);
 
   // Text label
   const stableN=pts.filter(p=>discrete?(p.re*p.re+p.im*p.im<=1):(p.re<0)).length;
